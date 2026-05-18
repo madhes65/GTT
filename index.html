@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gold Scan Engine</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --hdr:    #7C6B35;
+      --bg:     #F7F5EF;
+      --card:   #FFFFFF;
+      --border: #E5E2D8;
+      --text:   #1A1A1A;
+      --muted:  #6B7280;
+      --amber:  #9A7B1A;
+      --green:  #16A34A;
+      --shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+           background:var(--bg); color:var(--text); font-size:13px; min-height:100vh; }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    .header { background:var(--hdr); padding:12px 16px; display:flex; align-items:center;
+              gap:12px; position:sticky; top:0; z-index:20; box-shadow:0 2px 6px rgba(0,0,0,.25); }
+    .header h1 { flex:1; font-size:17px; font-weight:700; color:#fff; }
+    .header-btn { background:none; border:none; color:#fff; font-size:20px; cursor:pointer;
+                  padding:4px 7px; border-radius:6px; transition:background .15s; line-height:1; }
+    .header-btn:hover    { background:rgba(255,255,255,.15); }
+    .header-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .spin { animation:spin .9s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* ── Progress ────────────────────────────────────────────────────────────── */
+    .prog-wrap { height:3px; background:#E5E2D8; }
+    .prog-bar  { height:3px; background:var(--amber); width:0%; transition:width .4s ease; }
+    .prog-msg  { font-size:11px; color:var(--muted); padding:4px 16px; min-height:18px; }
+
+    /* ── Filters ─────────────────────────────────────────────────────────────── */
+    .filters { background:var(--card); border-bottom:1px solid var(--border); padding:10px 16px; }
+    .filter-group  { margin-bottom:8px; }
+    .filter-group:last-child { margin-bottom:0; }
+    .filter-label  { font-size:10px; font-weight:700; color:var(--muted);
+                     text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .chip  { border:1.5px solid #C9C4B2; background:#fff; color:var(--text); border-radius:20px;
+             padding:4px 12px; font-size:12px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+    .chip:hover  { border-color:var(--hdr); color:var(--hdr); }
+    .chip.active { background:#1C1C1C; border-color:#1C1C1C; color:#fff; }
+
+    /* ── Portal status ───────────────────────────────────────────────────────── */
+    .portal-status { display:flex; flex-wrap:wrap; gap:6px; padding:6px 12px 0; }
+    .ps-badge { border-radius:20px; padding:2px 10px; font-size:11px; font-weight:600; color:#fff; }
+
+    /* ── Summary + search ────────────────────────────────────────────────────── */
+    .toolbar { display:flex; align-items:center; gap:10px; padding:8px 16px;
+               background:var(--card); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    .summary { font-size:12px; color:var(--muted); flex:1; min-width:120px; }
+    .summary strong { color:var(--text); }
+    .search-box { border:1.5px solid #C9C4B2; border-radius:8px; padding:5px 10px;
+                  font-size:12px; background:var(--bg); color:var(--text); width:180px; }
+    .search-box:focus { outline:none; border-color:var(--hdr); }
+
+    /* ── Table ───────────────────────────────────────────────────────────────── */
+    .table-wrap { overflow-x:auto; padding:12px 12px 80px; }
+    table { width:100%; border-collapse:collapse; background:var(--card);
+            border-radius:12px; overflow:hidden; box-shadow:var(--shadow);
+            border:1px solid var(--border); font-size:12.5px; }
+    thead th {
+      background:var(--hdr); color:#fff; font-weight:600; font-size:11.5px;
+      padding:10px 12px; text-align:left; white-space:nowrap; cursor:pointer;
+      user-select:none; position:sticky; top:48px;
+    }
+    thead th:hover { background:#8B7840; }
+    thead th .sort-arrow { margin-left:4px; opacity:.6; font-size:10px; }
+    thead th.asc  .sort-arrow::after { content:'▲'; }
+    thead th.desc .sort-arrow::after { content:'▼'; }
+    thead th:not(.asc):not(.desc) .sort-arrow::after { content:'⇅'; }
+
+    tbody tr { border-bottom:1px solid #F0EDE5; transition:background .1s; }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:#FAFAF5; }
+
+    td { padding:9px 12px; vertical-align:middle; }
+
+    /* Portal badge */
+    .portal-badge { display:inline-block; border-radius:4px; padding:2px 7px;
+                    font-size:10.5px; font-weight:600; color:#fff; white-space:nowrap; }
+    /* Brand */
+    .td-brand { font-weight:600; color:var(--amber); white-space:nowrap; }
+    /* Title */
+    .td-title { max-width:220px; }
+    .td-title a { color:var(--text); text-decoration:none; }
+    .td-title a:hover { color:var(--hdr); text-decoration:underline; }
+    /* Weight */
+    .td-weight { white-space:nowrap; color:var(--muted); }
+    /* Price */
+    .td-price { text-align:right; white-space:nowrap; }
+    .price-main { font-size:14px; font-weight:700; }
+    .price-mrp  { font-size:10px; color:var(--muted); text-decoration:line-through; }
+    /* ₹/g */
+    .td-ppg { text-align:right; white-space:nowrap; font-weight:600; color:var(--amber); }
+    /* View */
+    .td-view a { color:var(--hdr); font-size:11px; text-decoration:none; white-space:nowrap; }
+    .td-view a:hover { text-decoration:underline; }
+
+    /* Empty state */
+    .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+    .empty .icon { font-size:48px; margin-bottom:12px; }
+    .empty h2 { font-size:15px; color:var(--text); margin-bottom:6px; }
+
+    /* FAB */
+    .fab { position:fixed; bottom:20px; right:16px; background:var(--hdr); color:#fff;
+           border:none; border-radius:28px; padding:12px 20px; font-size:13px; font-weight:600;
+           box-shadow:0 4px 16px rgba(0,0,0,.22); cursor:pointer; display:flex;
+           align-items:center; gap:7px; z-index:10; transition:transform .15s; }
+    .fab:hover    { transform:translateY(-2px); }
+    .fab:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <button class="header-btn">☰</button>
+  <h1>Gold Scan Engine</h1>
+  <button class="header-btn" id="scanBtn" title="Scan">&#x21BB;</button>
+</div>
+<div class="prog-wrap"><div class="prog-bar" id="progBar"></div></div>
+<div class="prog-msg"  id="progMsg"></div>
+<div class="portal-status" id="portalStatus"></div>
+
+<!-- Filters -->
+<div class="filters">
+  <div class="filter-group">
+    <div class="filter-label">Portal</div>
+    <div class="chips">
+      <button class="chip active" data-f="portal" data-v="all">All</button>
+      <button class="chip" data-f="portal" data-v="amazon">Amazon India</button>
+      <button class="chip" data-f="portal" data-v="flipkart">Flipkart</button>
+      <button class="chip" data-f="portal" data-v="tatacliq">Tata CLiQ</button>
+      <button class="chip" data-f="portal" data-v="ajio">Ajio</button>
+    </div>
+  </div>
+  <div class="filter-group">
+    <div class="filter-label">Brand</div>
+    <div class="chips">
+      <button class="chip active" data-f="brand" data-v="all">All</button>
+      <button class="chip" data-f="brand" data-v="mmtcpamp">MMTC-PAMP</button>
+      <button class="chip" data-f="brand" data-v="bangalorerefinery">Bangalore Refinery</button>
+      <button class="chip" data-f="brand" data-v="malabar">Malabar Gold</button>
+      <button class="chip" data-f="brand" data-v="kalyan">Kalyan Jewellers</button>
+      <button class="chip" data-f="brand" data-v="joyalukkas">Joyalukkas</button>
+      <button class="chip" data-f="brand" data-v="other">Other</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar: summary + search -->
+<div class="toolbar" id="toolbar" style="display:none">
+  <div class="summary" id="summaryLine"></div>
+  <input class="search-box" id="searchBox" type="text" placeholder="Search title…"/>
+</div>
+
+<!-- Table -->
+<div class="table-wrap">
+  <div class="empty" id="emptyState">
+    <div class="icon">🪙</div>
+    <h2>24K Gold — Live Prices</h2>
+    <p>Kalyan · Malabar · MMTC-PAMP · Bangalore Refinery · Joyalukkas</p>
+    <p style="margin-top:8px;font-size:12px;color:#A89B6A">Tap ↻ to scan all portals</p>
+  </div>
+
+  <table id="resultsTable" style="display:none">
+    <thead>
+      <tr>
+        <th data-col="portalName">Portal<span class="sort-arrow"></span></th>
+        <th data-col="brand">Brand<span class="sort-arrow"></span></th>
+        <th data-col="title">Product<span class="sort-arrow"></span></th>
+        <th data-col="weightLabel">Weight<span class="sort-arrow"></span></th>
+        <th data-col="price" class="desc">Price<span class="sort-arrow"></span></th>
+        <th data-col="mrp">MRP<span class="sort-arrow"></span></th>
+        <th data-col="pricePerGram">₹/g<span class="sort-arrow"></span></th>
+        <th data-col="offers">Offers<span class="sort-arrow"></span></th>
+        <th>View</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab">
+  <span id="fabIcon">🔍</span>
+  <span id="fabLabel">Scan All Portals</span>
+</button>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let allItems   = [];
+let filters    = { portal:'all', brand:'all' };
+let searchQ    = '';
+let sortCol    = 'price';
+let sortDir    = 'desc';   // 'asc' | 'desc'
+let isScanning = false;
+
+const $id = id => document.getElementById(id);
+const scanBtn     = $id('scanBtn');
+const fab         = $id('fab');
+const fabIcon     = $id('fabIcon');
+const fabLabel    = $id('fabLabel');
+const progBar     = $id('progBar');
+const progMsg     = $id('progMsg');
+const portalStatus= $id('portalStatus');
+const emptyState  = $id('emptyState');
+const resultsTable= $id('resultsTable');
+const tableBody   = $id('tableBody');
+const toolbar     = $id('toolbar');
+const summaryLine = $id('summaryLine');
+const searchBox   = $id('searchBox');
+
+[scanBtn, fab].forEach(b => b.addEventListener('click', startScan));
+searchBox.addEventListener('input', e => { searchQ = e.target.value.toLowerCase(); render(); });
+
+// ── Sort on header click ───────────────────────────────────────────────────────
+document.querySelectorAll('thead th[data-col]').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) { sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+    else { sortCol = col; sortDir = col === 'price' ? 'asc' : 'asc'; }
+    document.querySelectorAll('thead th').forEach(h => h.classList.remove('asc','desc'));
+    th.classList.add(sortDir);
+    render();
+  });
+});
+// Init first sort indicator
+document.querySelector('thead th[data-col="price"]').classList.add('desc');
+
+// ── Scan ──────────────────────────────────────────────────────────────────────
+function startScan() {
+  if (isScanning) return;
+  isScanning = true; allItems = [];
+  setScanning(true);
+  emptyState.style.display = 'none';
+  resultsTable.style.display = 'none';
+  toolbar.style.display = 'none';
+  portalStatus.innerHTML = '';
+  progBar.style.width = '0%';
+
+  const src = new EventSource('/api/scan');
+  src.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'progress') {
+      progBar.style.width = Math.round(msg.progress * 85) + '%';
+      progMsg.textContent = msg.message || '';
+      ensureBadge(msg.portalId, msg.portalName, msg.portalColor);
+    }
+    if (msg.type === 'portal_done') {
+      allItems.push(...msg.items);
+      updateBadge(msg.portalId, msg.count, msg.portalColor);
+      render();
+      resultsTable.style.display = 'table';
+      toolbar.style.display = 'flex';
+    }
+    if (msg.type === 'portal_error') updateBadge(msg.portalId, '✗', '#9CA3AF');
+    if (msg.type === 'done' || msg.type === 'error') {
+      progBar.style.width = '100%';
+      progMsg.textContent = msg.type === 'error' ? '⚠ ' + msg.message : '';
+      setTimeout(() => { progBar.style.width='0%'; progMsg.textContent=''; }, 1400);
+      setScanning(false); src.close();
+    }
+  };
+  src.onerror = () => {
+    progMsg.textContent = '⚠ Connection lost. Check /setup.';
+    setScanning(false); src.close();
+  };
+}
+
+function setScanning(on) {
+  isScanning = on; [scanBtn,fab].forEach(b=>b.disabled=on);
+  fabIcon.textContent = on?'⏳':'🔍';
+  fabLabel.textContent = on?'Scanning…':'Scan All Portals';
+  on ? fabIcon.classList.add('spin') : fabIcon.classList.remove('spin');
+}
+
+// ── Portal badges ─────────────────────────────────────────────────────────────
+function ensureBadge(id, name, color) {
+  if ($id('pb-'+id)) return;
+  const b = document.createElement('div');
+  b.className='ps-badge'; b.id='pb-'+id; b.style.background=color||'#9CA3AF';
+  b.innerHTML=`${esc(name)} <span id="pbc-${id}">…</span>`;
+  portalStatus.appendChild(b);
+}
+function updateBadge(id, count, color) {
+  const c=$id('pbc-'+id); if(c) c.textContent=count;
+  const b=$id('pb-'+id);  if(b&&color) b.style.background=color;
+}
+
+// ── Filter + sort ─────────────────────────────────────────────────────────────
+function getFiltered() {
+  let rows = allItems.filter(r => r.price > 0);
+  if (filters.portal !== 'all') rows = rows.filter(r => r.portal  === filters.portal);
+  if (filters.brand  !== 'all') rows = rows.filter(r => r.brandId === filters.brand);
+  if (searchQ) rows = rows.filter(r =>
+    (r.title||'').toLowerCase().includes(searchQ) ||
+    (r.brand||'').toLowerCase().includes(searchQ)
+  );
+
+  // Sort
+  rows.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === 'pricePerGram') { va = a.pricePerGram||Infinity; vb = b.pricePerGram||Infinity; }
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    if (va == null) va = sortDir==='asc' ? Infinity : -Infinity;
+    if (vb == null) vb = sortDir==='asc' ? Infinity : -Infinity;
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  return rows;
+}
+
+// ── Render table ──────────────────────────────────────────────────────────────
+const CARD_RE = /hdfc infinia|infinia|bonvoy|axis magnus|magnus|axis atlas|\bsbi\b|\brbl\b|\bicici\b|amex/i;
+const BANK_RE = /hdfc|sbi|icici|axis|kotak|bank|emi/i;
+function offerClass(t){ if(CARD_RE.test(t))return 'card'; if(BANK_RE.test(t))return 'bank'; if(/coupon|code|promo/i.test(t))return 'coupon'; return 'deal'; }
+
+function render() {
+  const rows = getFiltered();
+  const nPortals = new Set(allItems.map(r=>r.portal)).size;
+  summaryLine.innerHTML = `<strong>${rows.length}</strong> of <strong>${allItems.length}</strong> listings &nbsp;·&nbsp; <strong>${nPortals}</strong> portals`;
+
+  if (!rows.length) {
+    tableBody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">No results for selected filters.</td></tr>`;
+    return;
+  }
+
+  // Compute cheapest price per weight bucket (for ★ Best badge)
+  const minByWeight = {};
+  rows.forEach(r => {
+    const w = r.weight || 'unknown';
+    if (minByWeight[w] === undefined || r.price < minByWeight[w]) minByWeight[w] = r.price;
+  });
+
+  tableBody.innerHTML = rows.map(r => {
+    const portalColor = r.portalColor || '#6B7280';
+    const ppg = r.pricePerGram ? fmtN(r.pricePerGram) + '/g' : '—';
+    const wt  = r.weightLabel && r.weightLabel !== '—' ? r.weightLabel : (r.weight ? r.weight+'g' : '—');
+    const titleText = (r.title||'').length > 60 ? (r.title||'').slice(0,58)+'…' : (r.title||'—');
+    const isBest = r.price === minByWeight[r.weight || 'unknown'];
+
+    // Offers column
+    const offerTags = (r.offers||[]).slice(0,3).map(o =>
+      `<span class="offer-tag ${offerClass(o)}" title="${esc(o)}">${esc(o.slice(0,40))}${o.length>40?'…':''}</span>`
+    ).join('');
+
+    return `<tr${isBest?' style="background:#F0FAF4"':''}>
+      <td><span class="portal-badge" style="background:${portalColor}">${esc(r.portalName||r.portal)}</span></td>
+      <td class="td-brand">${esc(r.brand||'—')}</td>
+      <td class="td-title" title="${esc(r.title||'')}">
+        ${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(titleText)}</a>` : esc(titleText)}
+        ${isBest ? '<span class="best-badge">★ Best</span>' : ''}
+      </td>
+      <td class="td-weight">${esc(wt)}</td>
+      <td class="td-price">
+        <div class="price-main">${fmt(r.price)}</div>
+      </td>
+      <td class="td-price">
+        ${r.mrp && r.mrp > r.price ? `<div class="price-mrp">${fmt(r.mrp)}</div>` : '<span style="color:var(--muted)">—</span>'}
+      </td>
+      <td class="td-ppg">${ppg}</td>
+      <td class="td-offers">${offerTags || '<span style="color:var(--muted);font-size:11px">—</span>'}</td>
+      <td class="td-view">
+        ${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">View ↗</a>` : '—'}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Filter chips ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const f=chip.dataset.f, v=chip.dataset.v;
+    document.querySelectorAll(`[data-f="${f}"]`).forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    filters[f]=v;
+    if (allItems.length) render();
+  });
+});
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function fmt(n)  { return n==null||isNaN(n)?'—':'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:0}); }
+function fmtN(n) { return n==null||isNaN(n)?'—':'₹'+Number(n).toLocaleString('en-IN',{maximumFractionDigits:2}); }
+function esc(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
